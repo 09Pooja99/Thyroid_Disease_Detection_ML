@@ -20,11 +20,17 @@ jobs:
         run: |
           curl https://cli-assets.heroku.com/install.sh | sh
 
+      # Verify Heroku CLI installation
+      - name: Verify Heroku CLI
+        run: |
+          heroku --version
+
       # Set Heroku stack to container
       - name: Set Heroku Stack
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
+          export PATH=$PATH:/usr/local/bin
           heroku stack:set container --app ${{ secrets.HEROKU_APP_NAME }}
 
 
