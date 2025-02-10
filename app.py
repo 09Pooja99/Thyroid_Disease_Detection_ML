@@ -1,7 +1,7 @@
 from flask import Flask 
 from thyroid_detection.logger import logging
 from thyroid_detection.exception import ThyroidException 
-import sys
+import sys,os
 
 app= Flask(__name__)
 
