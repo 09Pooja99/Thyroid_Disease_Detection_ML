@@ -5,6 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
+thyroid_detection/artifact
 
 # Distribution / packaging
 .Python
