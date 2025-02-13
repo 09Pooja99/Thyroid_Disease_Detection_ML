@@ -1,27 +1,37 @@
 import os
 import sys
 
-class ThyroidException(Exception):
-    def __init__(self, error_messege: Exception, error_detail: sys):
-        super().__init__(error_messege)
-        self.error_messege = ThyroidException.get_detailed_error_messege(
-            error_messege=error_messege,
-            error_detail=error_detail,  # Consistent naming
-        )
+class AppException(Exception):
+    
+    def __init__(self, error_message:Exception,error_detail:sys):
+        super().__init__(error_message)
+        self.error_message=AppException.get_detailed_error_message(error_message=error_message,
+                                                                       error_detail=error_detail
+                                                                        )
+
 
     @staticmethod
-    def get_detailed_error_messege(error_messege: Exception, error_detail: sys) -> str:
-        _, _, exec_tb = error_detail.exc_info()
-        line_number = exec_tb.tb_lineno  # Get the line number where the exception occurred
+    def get_detailed_error_message(error_message:Exception,error_detail:sys)->str:
+        """
+        error_message: Exception object
+        error_detail: object of sys module
+        """
+        _,_ ,exec_tb = error_detail.exc_info()
+        exception_block_line_number = exec_tb.tb_frame.f_lineno
+        try_block_line_number = exec_tb.tb_lineno
         file_name = exec_tb.tb_frame.f_code.co_filename
-        error_messege = (
-            f"Error occurred in script: [{file_name}] at line number: [{line_number}] "
-            f"error message: [{error_messege}]"
-        )
-        return error_messege
+        error_message = f"""
+        Error occured in script: 
+        [ {file_name} ] at 
+        try block line number: [{try_block_line_number}] and exception block line number: [{exception_block_line_number}] 
+        error message: [{error_message}]
+        """
+        return error_message
 
     def __str__(self):
-        return self.error_messege
+        return self.error_message
+
 
     def __repr__(self) -> str:
-        return f"{ThyroidException.__name__}({self.error_messege})"
+        return AppException.__name__.str()
+
