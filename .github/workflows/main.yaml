@@ -13,7 +13,7 @@ jobs:
     steps:
       # Check-out your repository.
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v1
 
       # Install Heroku CLI
       - name: Install Heroku CLI
