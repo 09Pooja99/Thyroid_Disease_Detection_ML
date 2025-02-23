@@ -1,11 +1,14 @@
-from flask import Flask
+from flask import Flask, render_template
 
 app=Flask(__name__)
 
 
-@app.route("/",methods=['GET','POST'])
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    return "Starting Thyroid Disease Detection ML Project"
+    try:
+        return render_template('index.html')
+    except Exception as e:
+        return str(e)
 
 
 if __name__=="__main__":
