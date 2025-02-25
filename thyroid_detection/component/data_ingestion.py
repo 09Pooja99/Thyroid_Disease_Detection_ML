@@ -1,9 +1,10 @@
 import sys
+import re
 import os
 import zipfile
 import pandas as pd
 import numpy as np
-from six.moves import urllib
+from six.moves import urllib # type: ignore
 from sklearn.model_selection import StratifiedShuffleSplit
 from thyroid_detection.entity.config_entity import DataIngestionConfig
 from thyroid_detection.entity.artifact_entity import DataIngestionArtifact
@@ -72,7 +73,14 @@ class DataIngestion:
 
     def convert_data_to_csv(self, allbp_file_path: str) -> str:
         try:
-            df = pd.read_csv(allbp_file_path, delimiter="\t", header=None)  # Assuming tab-separated file
+            columns = [
+                'age', 'sex', 'on thyroxine', 'query on thyroxine', 'on antithyroid medication',
+                'sick', 'pregnant', 'thyroid surgery', 'I131 treatment', 'query hypothyroid',
+                'query hyperthyroid', 'lithium', 'goitre', 'tumor', 'hypopituitary', 'psych',
+                'TSH measured', 'TSH', 'T3 measured', 'T3', 'TT4 measured', 'TT4', 'T4U measured',
+                'T4U', 'FTI measured', 'FTI', 'TBG measured', 'TBG', 'referral source', 'Class'
+                ]
+            df = pd.read_csv(allbp_file_path, delimiter=",", header=None, na_values="?", names=columns) 
             csv_file_path = os.path.splitext(allbp_file_path)[0] + ".csv"
             df.to_csv(csv_file_path, index=False)
 
@@ -84,45 +92,63 @@ class DataIngestion:
 
     def split_data_as_train_test(self, csv_file_path: str) -> DataIngestionArtifact:
         try:
-            logging.info(f"Reading CSV file: [{csv_file_path}]")
-            thyroid_data_frame = pd.read_csv(csv_file_path)
+           logging.info(f"Reading CSV file: [{csv_file_path}]")
+           thyroid_data_frame = pd.read_csv(csv_file_path)
 
-            # Assuming first column is target, adjust accordingly
-            target_column = thyroid_data_frame.columns[0]
+        # Data Cleaning and Preprocessing
+           thyroid_data_frame.loc[thyroid_data_frame['age'] > 150, 'age'] = np.nan
+           thyroid_data_frame.replace("?", pd.NA, inplace=True)
+        
+        # Remove unwanted symbols and numerics in target column (Class)
+           thyroid_data_frame["Class"] = thyroid_data_frame["Class"].astype(str).apply(lambda x: re.sub(r'[^a-zA-Z\s]', '', x).strip())
+        
+        # Drop unnecessary columns
+           thyroid_data_frame.drop(columns=[
+            "TBG", "TSH measured", "T3 measured", "TT4 measured", "T4U measured", "FTI measured", "TBG measured", "referral source"
+              ], inplace=True)
+        
+        # Convert 'Class' Column into Readable Labels
+           label_mapping = {
+            'negative': 'negative',
+            'increased binding protein': 'hyperthyroidism',
+            'decreased binding protein': 'hypothyroidism'
+            }
+           thyroid_data_frame["Class"] = thyroid_data_frame["Class"].replace(label_mapping)
 
-            logging.info(f"Splitting data into train and test")
-            strat_train_set = None
-            strat_test_set = None
+           logging.info(f"Splitting data into train and test")
+           strat_train_set = None
+           strat_test_set = None
 
-            split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+           split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
 
-            for train_index, test_index in split.split(thyroid_data_frame, thyroid_data_frame[target_column]):
-                strat_train_set = thyroid_data_frame.loc[train_index]
-                strat_test_set = thyroid_data_frame.loc[test_index]
+           for train_index, test_index in split.split(thyroid_data_frame, thyroid_data_frame["Class"]):
+             strat_train_set = thyroid_data_frame.loc[train_index]
+             strat_test_set = thyroid_data_frame.loc[test_index]
 
-            train_file_path = os.path.join(self.data_ingestion_config.ingested_train_dir, "train.csv")
-            test_file_path = os.path.join(self.data_ingestion_config.ingested_test_dir, "test.csv")
+           train_file_path = os.path.join(self.data_ingestion_config.ingested_train_dir, "train.csv")
+           test_file_path = os.path.join(self.data_ingestion_config.ingested_test_dir, "test.csv")
 
-            os.makedirs(self.data_ingestion_config.ingested_train_dir, exist_ok=True)
-            os.makedirs(self.data_ingestion_config.ingested_test_dir, exist_ok=True)
+           os.makedirs(self.data_ingestion_config.ingested_train_dir, exist_ok=True)
+           os.makedirs(self.data_ingestion_config.ingested_test_dir, exist_ok=True)
 
-            logging.info(f"Exporting training dataset to file: [{train_file_path}]")
-            strat_train_set.to_csv(train_file_path, index=False)
+           logging.info(f"Exporting training dataset to file: [{train_file_path}]")
+           strat_train_set.to_csv(train_file_path, index=False)
 
-            logging.info(f"Exporting test dataset to file: [{test_file_path}]")
-            strat_test_set.to_csv(test_file_path, index=False)
+           logging.info(f"Exporting test dataset to file: [{test_file_path}]")
+           strat_test_set.to_csv(test_file_path, index=False)
 
-            data_ingestion_artifact = DataIngestionArtifact(
-                train_file_path=train_file_path,
-                test_file_path=test_file_path,
-                is_ingested=True,
-                message="Data ingestion completed successfully."
-            )
-            logging.info(f"Data Ingestion artifact: [{data_ingestion_artifact}]")
-            return data_ingestion_artifact
+           data_ingestion_artifact = DataIngestionArtifact(
+               train_file_path=train_file_path,
+               test_file_path=test_file_path,
+               is_ingested=True,
+               message="Data ingestion completed successfully."
+               )
+           logging.info(f"Data Ingestion artifact: [{data_ingestion_artifact}]")
+           return data_ingestion_artifact
 
         except Exception as e:
-            raise AppException(e, sys) from e
+           raise AppException(e, sys) from e
+
 
     def initiate_data_ingestion(self) -> DataIngestionArtifact:
         try:
