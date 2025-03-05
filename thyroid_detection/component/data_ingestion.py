@@ -122,8 +122,19 @@ class DataIngestion:
            split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
 
            for train_index, test_index in split.split(thyroid_data_frame, thyroid_data_frame["Class"]):
-             strat_train_set = thyroid_data_frame.loc[train_index]
-             strat_test_set = thyroid_data_frame.loc[test_index]
+              strat_train_set = thyroid_data_frame.loc[train_index]
+              strat_test_set = thyroid_data_frame.loc[test_index]
+
+           # Separate features and target
+           X_train = strat_train_set.drop(["Class"], axis=1)
+           y_train = strat_train_set["Class"]
+
+           X_test = strat_test_set.drop(["Class"], axis=1)
+           y_test = strat_test_set["Class"]
+
+           # Save train and test data
+           train_set = pd.concat([X_train, y_train], axis=1)
+           test_set = pd.concat([X_test, y_test], axis=1)
 
            train_file_path = os.path.join(self.data_ingestion_config.ingested_train_dir, "train.csv")
            test_file_path = os.path.join(self.data_ingestion_config.ingested_test_dir, "test.csv")
@@ -132,10 +143,11 @@ class DataIngestion:
            os.makedirs(self.data_ingestion_config.ingested_test_dir, exist_ok=True)
 
            logging.info(f"Exporting training dataset to file: [{train_file_path}]")
-           strat_train_set.to_csv(train_file_path, index=False)
+           train_set.to_csv(train_file_path, index=False)
 
            logging.info(f"Exporting test dataset to file: [{test_file_path}]")
-           strat_test_set.to_csv(test_file_path, index=False)
+           test_set.to_csv(test_file_path, index=False)
+
 
            data_ingestion_artifact = DataIngestionArtifact(
                train_file_path=train_file_path,

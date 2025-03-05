@@ -1,0 +1,102 @@
+columns:
+  age: float
+  sex: category
+  on_thyroxine: category
+  query_on_thyroxine: category
+  on_antithyroid_medication: category
+  sick: category
+  pregnant: category
+  thyroid_surgery: category
+  I131_treatment: category
+  query_hypothyroid: category
+  query_hyperthyroid: category
+  lithium: category
+  goitre: category
+  tumor: category
+  hypopituitary: category
+  psych: category
+  TSH: float
+  T3: float
+  TT4: float
+  T4U: float
+  FTI: float
+  
+numerical_columns:
+  -  age
+  -  TSH
+  -  T3
+  -  TT4
+  -  T4U
+  -  FTI
+
+
+categorical_columns:
+  -  sex
+  -  on_thyroxine
+  -  query_on_thyroxine
+  -  on_antithyroid_medication
+  -  sick
+  -  pregnant
+  -  thyroid_surgery
+  -  I131_treatment
+  -  query_hypothyroid
+  -  query_hyperthyroid
+  -  lithium
+  -  goitre
+  -  tumor
+  -  hypopituitary
+  -  psych
+
+
+target_column: Class
+
+domain_value:
+  sex:
+    - M
+    - F
+  on_thyroxine:
+    - t
+    - f
+  query_on_thyroxine:
+    - t
+    - f
+  on_antithyroid_medication:
+    - t
+    - f
+  sick:
+    - t
+    - f
+  pregnant:
+    - t
+    - f
+  thyroid_surgery:
+    - t
+    - f
+  I131_treatment:
+    - t
+    - f
+  query_hypothyroid:
+    - t
+    - f
+  query_hyperthyroid:
+    - t
+    - f
+  lithium:
+    - t
+    - f
+  goitre:
+    - t
+    - f
+  tumor:
+    - t
+    - f
+  hypopituitary:
+    - t
+    - f
+  psych:
+    - t
+    - f
+  Class:
+    - negative
+    - hyperthyroidism
+    - hypothyroidism
