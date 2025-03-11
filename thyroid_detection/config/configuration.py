@@ -114,17 +114,20 @@ class Configuration:
 
             data_transformation_config_info = self.config_info[DATA_TRANSFORMATION_CONFIG_KEY]
 
-            preprocessed_object_file_path = os.path.join(
+            preprocessed_object_file_name = os.path.join(
                 data_transformation_artifact_dir,
                 data_transformation_config_info[DATA_TRANSFORMATION_PREPROCESSING_DIR_KEY],
                 data_transformation_config_info[DATA_TRANSFORMATION_PREPROCESSED_FILE_NAME_KEY]
-            )             
+            ) 
+            print(f"preprocessed_object_file_path: {preprocessed_object_file_name}") #add print
+           
             
             transformed_train_dir=os.path.join(
             data_transformation_artifact_dir,
             data_transformation_config_info[DATA_TRANSFORMATION_DIR_NAME_KEY],
             data_transformation_config_info[DATA_TRANSFORMATION_TRAIN_DIR_NAME_KEY]
             )
+            print(f"transformed_train_dir: {transformed_train_dir}") #add print
 
 
             transformed_test_dir = os.path.join(
@@ -133,24 +136,22 @@ class Configuration:
             data_transformation_config_info[DATA_TRANSFORMATION_TEST_DIR_NAME_KEY]
 
             )
+            print(f"transformed_test_dir: {transformed_test_dir}") #add print
+
             
 
             data_transformation_config=DataTransformationConfig(
-                preprocessed_object_file_path=preprocessed_object_file_path,
                 transformed_train_dir=transformed_train_dir,
-                transformed_test_dir=transformed_test_dir
-            )
+                transformed_test_dir=transformed_test_dir,
+                preprocessed_object_file_name= preprocessed_object_file_name
+                )
+            
             logging.info(f"Data transformation config: {data_transformation_config}")
             return data_transformation_config
         except Exception as e:
             raise AppException(e,sys) from e            
 
-
-
-
-
-
-        
+     
     def get_training_pipeline_config(self) -> TrainingPipelineConfig:
          try:
              training_pipeline_config = self.config_info[TRAINING_PIPELINE_CONFIG_KEY]

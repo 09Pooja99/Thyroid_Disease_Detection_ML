@@ -1,15 +1,15 @@
 columns:
   age: float
   sex: category
-  on_thyroxine: category
-  query_on_thyroxine: category
-  on_antithyroid_medication: category
+  on thyroxine: category
+  query on thyroxine: category
+  on antithyroid medication: category
   sick: category
   pregnant: category
-  thyroid_surgery: category
-  I131_treatment: category
-  query_hypothyroid: category
-  query_hyperthyroid: category
+  thyroid surgery: category
+  I131 treatment: category
+  query hypothyroid: category
+  query hyperthyroid: category
   lithium: category
   goitre: category
   tumor: category
@@ -20,6 +20,8 @@ columns:
   TT4: float
   T4U: float
   FTI: float
+  Class: category
+
   
 numerical_columns:
   -  age
@@ -32,15 +34,15 @@ numerical_columns:
 
 categorical_columns:
   -  sex
-  -  on_thyroxine
-  -  query_on_thyroxine
-  -  on_antithyroid_medication
+  -  on thyroxine
+  -  query on thyroxine
+  -  on antithyroid medication
   -  sick
   -  pregnant
-  -  thyroid_surgery
-  -  I131_treatment
-  -  query_hypothyroid
-  -  query_hyperthyroid
+  -  thyroid surgery
+  -  I131 treatment
+  -  query hypothyroid
+  -  query hyperthyroid
   -  lithium
   -  goitre
   -  tumor
@@ -54,13 +56,13 @@ domain_value:
   sex:
     - M
     - F
-  on_thyroxine:
+  on thyroxine:
     - t
     - f
-  query_on_thyroxine:
+  query on thyroxine:
     - t
     - f
-  on_antithyroid_medication:
+  on antithyroid medication:
     - t
     - f
   sick:
@@ -69,16 +71,16 @@ domain_value:
   pregnant:
     - t
     - f
-  thyroid_surgery:
+  thyroid surgery:
     - t
     - f
-  I131_treatment:
+  I131 treatment:
     - t
     - f
-  query_hypothyroid:
+  query hypothyroid:
     - t
     - f
-  query_hyperthyroid:
+  query hyperthyroid:
     - t
     - f
   lithium:
