@@ -47,7 +47,7 @@ categorical_columns:
   -  goitre
   -  tumor
   -  hypopituitary
-  -  psych
+  -  psych 
 
 
 target_column: Class

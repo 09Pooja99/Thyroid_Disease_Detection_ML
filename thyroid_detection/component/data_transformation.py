@@ -2,12 +2,12 @@ import sys
 import os
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, RobustScaler, MinMaxScaler
+from sklearn.preprocessing import LabelEncoder , FunctionTransformer
+from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from imblearn.over_sampling import SMOTE, RandomOverSampler
+from imblearn.over_sampling import SMOTE
 from thyroid_detection.exception import AppException
 from thyroid_detection.logger import logging
 from thyroid_detection.entity.config_entity import DataTransformationConfig
@@ -15,11 +15,13 @@ from thyroid_detection.entity.artifact_entity import DataIngestionArtifact, Data
 from thyroid_detection.constant import *
 from thyroid_detection.util.util import read_yaml_file, save_object, save_numpy_array_data, load_data
 
+
 class DataTransformation:
 
-    def __init__(self, data_transformation_config: DataTransformationConfig,
-                 data_ingestion_artifact: DataIngestionArtifact,
-                 data_validation_artifact: DataValidationArtifact):
+    def __init__(self, data_transformation_config:DataTransformationConfig,
+                  data_ingestion_artifact:DataIngestionArtifact,
+                    data_validation_artifact:DataValidationArtifact
+                    ):
         try:
             logging.info(f"{'=' * 20} Data Transformation log started. {'=' * 20}")
             self.data_transformation_config = data_transformation_config
@@ -36,23 +38,52 @@ class DataTransformation:
             numerical_columns = dataset_schema[NUMERICAL_COLUMN_KEY]
             categorical_columns = dataset_schema[CATEGORICAL_COLUMN_KEY]
 
-            num_pipeline = Pipeline(steps=[
-                ('imputer', SimpleImputer(strategy="median")),
-                ('scaler', StandardScaler())
+            scalers = {
+                'age': StandardScaler(),
+                'TSH': RobustScaler(),
+                'TT4': RobustScaler(),
+                'T4U': MinMaxScaler(),
+                'FTI': MinMaxScaler(),
+                'T3': RobustScaler()
+                }
+
+            num_pipeline_steps = [('imputer', SimpleImputer(strategy="median"))]
+
+            # Log transform of TSH column before scaling
+            num_pipeline_steps.append(('log_transform_TSH', FunctionTransformer(lambda x: np.log1p(x), validate=False)))
+            num_pipeline_steps.append(('fillna_TSH', SimpleImputer(strategy='mean')))
+
+            for col, scaler in scalers.items():
+                num_pipeline_steps.append((f'scaler_{col}', scaler))
+
+            num_pipeline = Pipeline(steps=num_pipeline_steps)
+
+            # Separate 'sex' from other categorical columns
+            binary_columns = [col for col in categorical_columns if col != "sex"]
+            sex_column = ["sex"]
+
+            # Binary Mapping Pipeline (for t -> 1, f -> 0)
+            binary_pipeline = Pipeline(steps=[
+                ('imputer', SimpleImputer(strategy="most_frequent")),
+                ('binary_mapper', FunctionTransformer(lambda X: pd.DataFrame(X).applymap(lambda x: 1 if x == 't' else 0), validate=False))
             ])
 
-            cat_pipeline = Pipeline(steps=[
-                ('impute', SimpleImputer(strategy="most_frequent")),
-                ('one_hot_encoder', OneHotEncoder(handle_unknown="ignore", sparse=False))
+            # Label Encoding Pipeline (for 'sex' column)
+            label_pipeline = Pipeline(steps=[
+                ('imputer', SimpleImputer(strategy="most_frequent")),
+                ('label_encoder', FunctionTransformer(lambda X:pd.DataFrame(X).apply(LabelEncoder().fit_transform) , validate=False))
             ])
 
             logging.info(f"Categorical columns: {categorical_columns}")
-            logging.info(f"Numerical columns: {numerical_columns}")
+            logging.info(f"Numerical columns: {numerical_columns}") 
+
 
             preprocessing = ColumnTransformer([
                 ('num_pipeline', num_pipeline, numerical_columns),
-                ('cat_pipeline', cat_pipeline, categorical_columns),
-            ])
+                ('binary_pipeline', binary_pipeline, binary_columns),
+                ('label_pipeline', label_pipeline, sex_column)
+                ])
+
             return preprocessing
 
         except Exception as e:
@@ -73,187 +104,93 @@ class DataTransformation:
             schema = read_yaml_file(file_path=schema_file_path)
             target_column_name = schema[TARGET_COLUMN_KEY]
 
-            #print("Before dropping target:", train_df.columns)
-            #print("Data types in original train_df:", train_df.dtypes)
+
+            print("Before dropping target:", train_df.columns)
+            print("Data types in original train_df:", train_df.dtypes)
+
+            print(train_df.isnull().sum())
 
 
             logging.info(f"Splitting features and target variables.")
             X_train = train_df.drop(columns=[target_column_name], axis=1)
             y_train = train_df[target_column_name]
             X_test = test_df.drop(columns=[target_column_name], axis=1)
-            y_test = test_df[target_column_name]
+            y_test = test_df[target_column_name] 
 
-            # Identify numerical and categorical columns
-            num_cols = X_train.select_dtypes(include=[np.number]).columns.tolist()
-            #cat_cols = X_train.select_dtypes(exclude=[np.number]).columns.tolist()
-            #print("Columns in training dataset:", list(X_train.columns))
-
-            cat_cols = ['sex', 'on thyroxine', 'query on thyroxine', 'on antithyroid medication', 
-                    'sick', 'pregnant', 'thyroid surgery', 'I131 treatment', 'query hypothyroid',
-                    'query hyperthyroid', 'lithium', 'goitre', 'tumor', 'hypopituitary', 'psych']
-            missing_cols = [col for col in cat_cols if col not in X_train.columns]
-            if missing_cols:
-                print("Missing columns:", missing_cols)
-            # Handle missing columns (either add them with default values or remove references)
-            for col in missing_cols:
-                 X_train[col] = X_train[col].astype(str).fillna("missing")
-                 X_test[col] = X_test[col].astype(str).fillna("missing")
+            # Print unique values in the target column before encoding
+            print("Unique values in target column before encoding:", y_train.unique())
 
 
-            # Handle missing values for numerical columns
-            num_imputer = SimpleImputer(strategy="median")
-            X_train[num_cols] = num_imputer.fit_transform(X_train[num_cols])
-            X_test[num_cols] = num_imputer.transform(X_test[num_cols])
 
-            # Handle missing values for categorical columns
-            cat_imputer = SimpleImputer(strategy="most_frequent")
-            X_train[cat_cols] = cat_imputer.fit_transform(X_train[cat_cols])
-            X_test[cat_cols] = cat_imputer.transform(X_test[cat_cols])
-
-            # Apply OneHotEncoder to categorical variables
-            encoder = OneHotEncoder(handle_unknown="ignore", sparse=False)
-            X_train_encoded = encoder.fit_transform(X_train[cat_cols])
-            X_test_encoded = encoder.transform(X_test[cat_cols])
-
-            #print("Transformed feature names:", X_train.columns)
-
-
-            # Convert encoded categorical data to DataFrame
-            X_train_encoded_df = pd.DataFrame(X_train_encoded, columns=encoder.get_feature_names_out(cat_cols))
-            X_test_encoded_df = pd.DataFrame(X_test_encoded, columns=encoder.get_feature_names_out(cat_cols))
-
-            # Drop original categorical columns and concatenate encoded ones
-            X_train = X_train.drop(columns=cat_cols).reset_index(drop=True)
-            X_test = X_test.drop(columns=cat_cols).reset_index(drop=True)
-            X_train = pd.concat([X_train, X_train_encoded_df], axis=1)
-            #print("Data types after encoding and concatenation:", X_train.dtypes)
-            #print("Unique values in age column after encoding:", X_train['age'].unique())
-            X_test = pd.concat([X_test, X_test_encoded_df], axis=1)
-
-            # Log transform TSH
-            X_train['TSH'] = np.log1p(X_train['TSH'])
-            X_test['TSH'] = np.log1p(X_test['TSH'])
-
-            #print("NaN values in TSH after log transformation (X_train):", X_train['TSH'].isnull().sum())
-            #print("NaN values in TSH after log transformation (X_test):", X_test['TSH'].isnull().sum())
-            
-            X_train['TSH'].fillna(X_train['TSH'].mean(), inplace=True)
-            X_test['TSH'].fillna(X_test['TSH'].mean(), inplace=True)
-
-            #Explicitly convert all numerical columns to numeric, handling potential errors
-            for col in num_cols:
-                X_train[col] = pd.to_numeric(X_train[col], errors='coerce')
-                X_test[col] = pd.to_numeric(X_test[col], errors='coerce')
-                X_train[col].fillna(X_train[col].mean(), inplace=True)
-                X_test[col].fillna(X_test[col].mean(), inplace=True)
-                X_train[col] = X_train[col].astype(float)
-                X_test[col] = X_test[col].astype(float)
-
-            # Debugging prints for all numerical columns
-            #for col in num_cols:
-                 #unique_values = X_train[col].unique()
-                 #print(f"Column: {col}")
-                 #for value in unique_values[:10]: # Print first 10 values
-                     #print(f"  Value: {value}, Repr: {repr(value)}")
-                 #print("-" * 20)
-
-
-            # Apply scaling
-            scalers = {
-                'age': StandardScaler(),
-                'TSH': RobustScaler(),
-                'TT4': RobustScaler(),
-                'T4U': MinMaxScaler(),
-                'FTI': MinMaxScaler(),
-                'T3': RobustScaler()
-                }
-            for col, scaler in scalers.items():
-                 #print(f"Scaling column: {col}")
-                 #print(f"  Data type before scaling (X_train): {X_train[col].dtype}")
-                 X_train[col] = scaler.fit_transform(X_train[[col]]).flatten()
-                 #print(f"  Data type after scaling (X_train): {X_train[col].dtype}")
-                 X_test[col] = scaler.transform(X_test[[col]]).flatten()
-                 #print(f"  Data type after scaling (X_test): {X_test[col].dtype}")
-
-
-            #print("Columns in X_train:", list(X_train.columns))
-            # After the scaling loop
-            #print("NaN values in X_train after scaling:", X_train.isnull().sum().sum())
-            #print("NaN values in X_test after scaling:", X_test.isnull().sum().sum())
-
-            logging.info(f"Unique values in y_train before resampling: {y_train.unique()}")
-            logging.info(f"Data type of y_train before resampling: {y_train.dtype}")
-
-            # Resampling using SMOTE and Random Over-Sampling
-            logging.info(f"Applying SMOTE and Random Over-Sampling.")
-            print("Before SMOTE/ROS")
-            print(f"y_train unique values: {y_train.unique()}") #check unique values
-            #print(f"y_train data type: {y_train.dtype}") #check data type
-            #print(f"X_train data types: {X_train.dtypes}") #check data types
-            print(f"y_train value counts:\n{y_train.value_counts()}") 
-
-            # Print unique values of all columns in X_train
-            for col in X_train.columns:
-                print(f"Unique values of X_train['{col}']: {X_train[col].unique()}")
-
-            print(f"Number of NaN values in X_train: {X_train.isna().sum().sum()}")
-            print(f"Number of infinite values in X_train: {np.isinf(X_train).sum().sum()}")
-
-            # Apply Label Encoding after SMOTE and RandomOverSampler 
-
-            #smote = SMOTE(sampling_strategy={"1": "auto"}, random_state=42) 
-            #ros = RandomOverSampler(sampling_strategy={"0": "auto"}, random_state=42)
-
-            #smote = SMOTE(sampling_strategy={"hypothyroidism": 20, "hyperthyroidism": "auto"}, random_state=42) #Use original labels.
-            ros = RandomOverSampler( random_state=42) #SMOTE handles both.
-
-            #X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
-            X_resampled, y_resampled = ros.fit_resample(X_train, y_train)
-
-            X_train_balanced = pd.DataFrame(X_resampled, columns=X_train.columns)
-            y_train_balanced = pd.DataFrame(y_resampled, columns=["Class"])
-            #print("After SMOTE/ROS")
-
-            df_train_resampled= pd.concat([X_resampled, y_resampled], axis=1)
-            logging.info(f"Resampling completed. Shape after SMOTE+ROS: {X_train_balanced.shape}")
-
-            # Apply Label Encoding after SMOTE and RandomOverSampler 
-            #print("Before Label Encoder")
-            #print(f"y_train unique values: {y_train_balanced.unique()}")  # Resampled labels
+            # Apply Label Encoding on Target Column
+            logging.info("Applying Label Encoding on target column.")
             label_encoder = LabelEncoder()
-            df_train_resampled["Class"] = label_encoder.fit_transform(df_train_resampled["Class"])
-            print("After label encoder")
+            y_train = label_encoder.fit_transform(y_train).ravel()
+            y_test = label_encoder.transform(y_test).ravel()
 
             
+            # Print the mapping of original labels to encoded values
+            label_mapping = {original: encoded for encoded, original in enumerate(label_encoder.classes_)}
+            print("Label Encoding Mapping:", label_mapping)
+
             
-            # Define paths to save transformed data
+            logging.info(f"Applying preprocessing object on training dataframe and testing dataframe")
+            X_train_arr=preprocessing_obj.fit_transform(X_train)
+            X_test_arr = preprocessing_obj.transform(X_test)
+
+            print("after preprocessing NaN counts: ", np.isnan(X_train_arr).sum())
+            # Find positions of NaN values (optional)
+            print("after preprocessing: ", np.where(np.isnan(X_train_arr)))
+            print("after preprocessing: ", type(X_train_arr))
+            print("before SMOTE shape:",  X_train_arr.shape, y_train.shape)
+            logging.info(f"Before SMOTE shape: X_train: {X_train_arr.shape}, y_train: {y_train.shape}")
+
+            # Apply SMOTE to handle class imbalance
+            logging.info("Applying SMOTE to handle class imbalance.")
+            smote = SMOTE(sampling_strategy="auto", random_state=42)
+            X_train_arr, y_train = smote.fit_resample(X_train_arr, y_train)
+
+            print("after SMOTE shape:",  X_train_arr.shape, y_train.shape)
+            logging.info(f"After SMOTE shape: X_train: {X_train_arr.shape}, y_train: {y_train.shape}")
+
+
+
+            train_arr = np.c_[ X_train_arr, np.array(y_train)]
+
+            test_arr = np.c_[X_test_arr, np.array(y_test)]
+
+            
             transformed_train_dir = self.data_transformation_config.transformed_train_dir
             transformed_test_dir = self.data_transformation_config.transformed_test_dir
             preprocessing_obj_file_name = self.data_transformation_config.preprocessed_object_file_name
-            
-            train_file_name = os.path.basename(train_file_path).replace(".csv", ".npz")
-            test_file_name = os.path.basename(test_file_path).replace(".csv", ".npz")
+
+            train_file_name = os.path.basename(train_file_path).replace(".csv",".npz")
+            test_file_name = os.path.basename(test_file_path).replace(".csv",".npz")
+
             transformed_train_file_path = os.path.join(transformed_train_dir, train_file_name)
             transformed_test_file_path = os.path.join(transformed_test_dir, test_file_name)
 
             logging.info(f"Saving transformed training and testing array.")
-            save_numpy_array_data(file_path=transformed_train_file_path, array=X_train_balanced.to_numpy())
-            save_numpy_array_data(file_path=transformed_test_file_path, array=X_test.to_numpy())
+            
+            save_numpy_array_data(file_path=transformed_train_file_path,array=train_arr)
+            save_numpy_array_data(file_path=transformed_test_file_path,array=test_arr)
+
             preprocessing_obj_file_path = self.data_transformation_config.preprocessed_object_file_name
-            save_object(file_path=preprocessing_obj_file_path, obj=preprocessing_obj)
 
-            data_transformation_artifact = DataTransformationArtifact(
-                is_transformed=True,
-                message="Data transformation successful.",
-                transformed_train_file_path=transformed_train_file_path,
-                transformed_test_file_path=transformed_test_file_path,
-                preprocessed_object_file_path=preprocessing_obj_file_path
+            logging.info(f"Saving preprocessing object.")
+            save_object(file_path=preprocessing_obj_file_path,obj=preprocessing_obj)
+
+            data_transformation_artifact = DataTransformationArtifact(is_transformed=True,
+            message="Data transformation successfull.",
+            transformed_train_file_path=transformed_train_file_path,
+            transformed_test_file_path=transformed_test_file_path,
+            preprocessed_object_file_path=preprocessing_obj_file_path
+
             )
-
-            logging.info(f"Data transformation artifact: {data_transformation_artifact}")
+            logging.info(f"Data transformationa artifact: {data_transformation_artifact}")
             return data_transformation_artifact
         except Exception as e:
-            raise AppException(e, sys) from e
+            raise AppException(e,sys) from e
 
     def __del__(self):
-        logging.info(f"{'=' * 20} Data Transformation log completed. {'=' * 20}\n\n")
+        logging.info(f"{'='*20}Data Transformation log completed.{'='*20} \n\n")

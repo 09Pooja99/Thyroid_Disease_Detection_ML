@@ -4,11 +4,13 @@ import uuid
 from datetime import datetime
 from threading import Thread
 from thyroid_detection.config.configuration import Configuration
-from thyroid_detection.entity.config_entity import DataIngestionConfig,DataValidationConfig,DataTransformationConfig
-from thyroid_detection.entity.artifact_entity import DataIngestionArtifact,DataValidationArtifact,DataTransformationArtifact
+from thyroid_detection.entity.config_entity import DataIngestionConfig,DataValidationConfig,DataTransformationConfig,ModelTrainerConfig, ModelEvaluationConfig
+from thyroid_detection.entity.artifact_entity import DataIngestionArtifact,DataValidationArtifact,DataTransformationArtifact,ModelTrainerArtifact,ModelEvaluationArtifact
 from thyroid_detection.component.data_ingestion import DataIngestion
 from thyroid_detection.component.data_validation import DataValidation
 from thyroid_detection.component.data_transformation import DataTransformation
+from thyroid_detection.component.model_trainer import ModelTrainer
+from thyroid_detection.component.model_evaluation import ModelEvaluation
 from thyroid_detection.exception import AppException
 from thyroid_detection.logger import logging
 
@@ -51,7 +53,30 @@ class Pipeline(Thread):
                                      )
                 return data_transformation.initiate_data_transformation()
            except Exception as e:
-                raise AppException(e, sys)    
+                raise AppException(e, sys)
+
+    def start_model_trainer(self, data_transformation_artifact: DataTransformationArtifact) -> ModelTrainerArtifact:
+        try:
+            model_trainer = ModelTrainer(model_trainer_config=self.config.get_model_trainer_config(),
+                                         data_transformation_artifact = data_transformation_artifact)
+            return model_trainer.initiate_model_trainer()
+        except Exception as e:
+            raise AppException(e, sys) from e
+        
+    def start_model_evaluation(self, data_transformation_artifact: DataTransformationArtifact,
+                                data_validation_artifact: DataValidationArtifact,
+                                  model_trainer_artifact: ModelTrainerArtifact) -> ModelEvaluationArtifact:
+        try:
+            model_eval = ModelEvaluation(model_evaluation_config=self.config.get_model_evaluation_config(),
+                                         data_transformation_artifact=data_transformation_artifact,
+                                         data_validation_artifact=data_validation_artifact,
+                                         model_trainer_artifact=model_trainer_artifact)
+
+            return model_eval.initiate_model_evaluation()
+        except Exception as e:
+            raise AppException(e, sys) from e
+
+
 
     def run_pipeline(self):
         try:
@@ -72,7 +97,21 @@ class Pipeline(Thread):
                 data_ingestion_artifact=data_ingestion_artifact,
                 data_validation_artifact=data_validation_artifact
                 )
-            logging.info("Data Transformation completed.")            
+            logging.info("Data Transformation completed.")  
+
+
+            logging.info("Initiating Model Training...")
+            model_trainer_artifact = self.start_model_trainer(data_transformation_artifact=data_transformation_artifact)
+            logging.info("Model Training completed.")
+            
+            logging.info("Initiating Model Evaluation...")
+            model_evaluation_artifact = self.start_model_evaluation(data_transformation_artifact=data_transformation_artifact,
+                                                                    data_validation_artifact=data_validation_artifact,
+                                                                    model_trainer_artifact=model_trainer_artifact)
+            logging.info("Model Evaluation Completed...")     
+                   
+
+
 
             logging.info("Pipeline completed till CSV generation.")
         except Exception as e:

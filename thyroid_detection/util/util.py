@@ -21,17 +21,16 @@ def write_yaml_file(file_path:str,data:dict=None):
     except Exception as e:
         raise AppException(e,sys)
 
-def read_yaml_file(file_path:str)->dict:
+def read_yaml_file(file_path: str) -> dict:
     """
     Reads a YAML file and returns the contents as a dictionary.
-    file_path: str
     """
     try:
-        with open(file_path, 'rb') as yaml_file:
+        with open(file_path, "rb") as yaml_file:
             return yaml.safe_load(yaml_file)
     except Exception as e:
-        raise AppException(e,sys) from e
-    
+        raise AppException(e, sys) from e
+
 def save_numpy_array_data(file_path: str, array: np.array):
     """
     Save numpy array data to file
@@ -55,7 +54,7 @@ def load_numpy_array_data(file_path: str) -> np.array:
     """
     try:
         with open(file_path, 'rb') as file_obj:
-            return np.load(file_obj)
+            return np.load(file_obj, allow_pickle=True)
     except Exception as e:
         raise AppException(e, sys) from e
 
@@ -108,3 +107,35 @@ def load_data(file_path: str, schema_file_path: str) -> pd.DataFrame:
     except Exception as e:
         raise AppException(e,sys) from e
     
+def load_npz_data(file_path: str, schema_file_path: str) -> pd.DataFrame:
+    """Load .npz file and validate columns against schema."""
+    try:
+        datatset_schema = read_yaml_file(schema_file_path)
+        schema = datatset_schema[DATASET_SCHEMA_COLUMNS_KEY]
+
+        npz_data = np.load(file_path, allow_pickle=True)
+        print(f"Loaded NPZ data type: {type(npz_data)}")
+        print(f"NPZ array shape: {npz_data.shape}") 
+        
+        dataframe = pd.DataFrame(npz_data) 
+
+        # Check if schema columns match
+        error_message = ""
+        expected_columns = list(schema.keys())
+
+        if len(dataframe.columns) != len(expected_columns):
+            error_message += f"Expected {len(expected_columns)} columns, but found {len(dataframe.columns)}.\n"
+
+        for i, column in enumerate(expected_columns):
+            if i >= len(dataframe.columns):  # Avoid index error
+                error_message += f"\nMissing column: {column} from schema."
+            else:
+                dataframe.rename(columns={i: column}, inplace=True)  # Rename columns based on schema
+
+        if error_message:
+            raise Exception(error_message)
+
+        return dataframe
+
+    except Exception as e:
+        raise AppException(e, sys) from e   
