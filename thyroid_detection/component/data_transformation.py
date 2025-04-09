@@ -47,12 +47,12 @@ class DataTransformation:
                 'T3': RobustScaler()
                 }
 
-            num_pipeline_steps = [('imputer', SimpleImputer(strategy="median"))]
-
-            # Log transform of TSH column before scaling
-            num_pipeline_steps.append(('log_transform_TSH', FunctionTransformer(lambda x: np.log1p(x), validate=False)))
+            num_pipeline_steps = [
+                ('imputer', SimpleImputer(strategy="median")),
+                ('log_transform_TSH', FunctionTransformer(lambda x: np.log1p(np.nan_to_num(x)), validate=False)),
+                ]
             num_pipeline_steps.append(('fillna_TSH', SimpleImputer(strategy='mean')))
-
+            
             for col, scaler in scalers.items():
                 num_pipeline_steps.append((f'scaler_{col}', scaler))
 
@@ -71,7 +71,7 @@ class DataTransformation:
             # Label Encoding Pipeline (for 'sex' column)
             label_pipeline = Pipeline(steps=[
                 ('imputer', SimpleImputer(strategy="most_frequent")),
-                ('label_encoder', FunctionTransformer(lambda X:pd.DataFrame(X).apply(LabelEncoder().fit_transform) , validate=False))
+                ('label_encoder', FunctionTransformer(lambda X: np.array([LabelEncoder().fit_transform(X[:, i]) for i in range(X.shape[1])]).T, validate=False))
             ])
 
             logging.info(f"Categorical columns: {categorical_columns}")

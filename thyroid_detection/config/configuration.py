@@ -1,5 +1,5 @@
 from thyroid_detection.entity.config_entity import (
-    DataIngestionConfig,DataValidationConfig,DataTransformationConfig,ModelTrainerConfig,ModelEvaluationConfig,TrainingPipelineConfig)
+    DataIngestionConfig,DataValidationConfig,DataTransformationConfig,ModelTrainerConfig,ModelEvaluationConfig,ModelPusherConfig,TrainingPipelineConfig)
 from thyroid_detection.util.util import read_yaml_file
 from thyroid_detection.logger import logging
 import sys, os
@@ -199,7 +199,23 @@ class Configuration:
             logging.info(f"Model Evaluation Config: {response}.")
             return response
         except Exception as e:
-            raise AppException(e,sys) from e    
+            raise AppException(e,sys) from e  
+
+    def get_model_pusher_config(self) -> ModelPusherConfig:
+
+        try:
+            time_stamp = f"{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            model_pusher_config_info = self.config_info[MODEL_PUSHER_CONFIG_KEY]
+            export_dir_path = os.path.join(ROOT_DIR, model_pusher_config_info[MODEL_PUSHER_MODEL_EXPORT_DIR_KEY], time_stamp)
+
+            model_pusher_config = ModelPusherConfig(export_dir_path=export_dir_path)
+            
+            logging.info(f"Model pusher config {model_pusher_config}")
+            
+            return model_pusher_config
+
+        except Exception as e:
+            raise AppException(e,sys) from e  
    
      
     def get_training_pipeline_config(self) -> TrainingPipelineConfig:

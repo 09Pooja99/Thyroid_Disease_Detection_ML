@@ -4,6 +4,8 @@ import os
 import zipfile
 import pandas as pd
 import numpy as np
+import shutil
+from typing import List
 from six.moves import urllib # type: ignore
 from sklearn.model_selection import StratifiedShuffleSplit
 from thyroid_detection.entity.config_entity import DataIngestionConfig
@@ -31,7 +33,7 @@ class DataIngestion:
             zip_download_dir = self.data_ingestion_config.zip_download_dir
 
             if os.path.exists(zip_download_dir):
-                os.remove(zip_download_dir)
+                shutil.rmtree(zip_download_dir)
 
             os.makedirs(zip_download_dir, exist_ok=True)
 
@@ -47,31 +49,37 @@ class DataIngestion:
         except Exception as e:
             raise AppException(e, sys) from e
 
-    def extract_zip_file(self, zip_file_path: str) -> str:
+    def extract_zip_file(self, zip_file_path: str) -> List[str]:
         try:
             raw_data_dir = self.data_ingestion_config.raw_data_dir
 
             if os.path.exists(raw_data_dir):
-                os.remove(raw_data_dir)
+                shutil.rmtree(raw_data_dir)
 
             os.makedirs(raw_data_dir, exist_ok=True)
 
             logging.info(f"Extracting ZIP file: [{zip_file_path}] into dir: [{raw_data_dir}]")
+
+            required_files = [
+                "allbp.data", "allhyper.data", "allhypo.data",
+                "allrep.data", "dis.data", "sick.data"
+                ]
+            extracted_files = []
+
             with zipfile.ZipFile(zip_file_path, 'r') as thyroid_zip_file_obj:
-                thyroid_zip_file_obj.extractall(path=raw_data_dir)
+                for file in required_files:
+                    if file in thyroid_zip_file_obj.namelist():
+                        thyroid_zip_file_obj.extract(file, path=raw_data_dir)
+                        extracted_files.append(os.path.join(raw_data_dir, file))
+                    else:
+                        raise AppException(f"Required file {file} not found in ZIP archive.", sys)
             logging.info(f"Extraction completed")
-
-            # Return path of required file (allbp.data)
-            allbp_file_path = os.path.join(raw_data_dir, "allbp.data")
-            if not os.path.exists(allbp_file_path):
-                raise AppException(f"File allbp.data not found in extracted contents", sys)
-
-            return allbp_file_path
+            return extracted_files
 
         except Exception as e:
             raise AppException(e, sys) from e
 
-    def convert_data_to_csv(self, allbp_file_path: str) -> str:
+    def convert_data_to_csv(self, extracted_files: List[str]) -> List[str]:
         try:
             columns = [
                 'age', 'sex', 'on thyroxine', 'query on thyroxine', 'on antithyroid medication',
@@ -80,20 +88,45 @@ class DataIngestion:
                 'TSH measured', 'TSH', 'T3 measured', 'T3', 'TT4 measured', 'TT4', 'T4U measured',
                 'T4U', 'FTI measured', 'FTI', 'TBG measured', 'TBG', 'referral source', 'Class'
                 ]
-            df = pd.read_csv(allbp_file_path, delimiter=",", header=None, na_values="?", names=columns) 
-            csv_file_path = os.path.splitext(allbp_file_path)[0] + ".csv"
-            df.to_csv(csv_file_path, index=False)
+            
+            csv_file_paths = []
+            for file_path in extracted_files:
+                df = pd.read_csv(file_path, delimiter=",", header=0, na_values="?", names=columns)
+                csv_file_path = os.path.splitext(file_path)[0] + ".csv"
+                df.to_csv(csv_file_path, index=False)
 
-            logging.info(f"Converted allbp.data to CSV at: [{csv_file_path}]")
-            return csv_file_path
+                logging.info(f"Converted {os.path.basename(file_path)} to CSV at: [{csv_file_path}]")
+                csv_file_paths.append(csv_file_path)
+            return csv_file_paths
+
+        except Exception as e:
+            raise AppException(e, sys) from e
+        
+    def merge_csv_files(self, csv_file_paths: List[str], master_csv_file: str = "merged_thyroid_data.csv") -> str:
+        try:
+            merged_df = pd.DataFrame()
+            
+            for file_path in csv_file_paths:
+                df = pd.read_csv(file_path)
+                merged_df = pd.concat([merged_df, df], ignore_index=True)
+
+            # Save merged CSV in the same directory as raw files
+            raw_data_dir = os.path.dirname(csv_file_paths[0])
+            merged_csv_path = os.path.join(raw_data_dir, master_csv_file)
+
+            # Save merged data
+            merged_df.to_csv(merged_csv_path, index=False)
+            logging.info(f"Merged CSV saved to: {merged_csv_path}")
+
+            return merged_csv_path
 
         except Exception as e:
             raise AppException(e, sys) from e
 
-    def split_data_as_train_test(self, csv_file_path: str) -> DataIngestionArtifact:
+    def split_data_as_train_test(self, master_csv_file: str) -> DataIngestionArtifact:
         try:
-           logging.info(f"Reading CSV file: [{csv_file_path}]")
-           thyroid_data_frame = pd.read_csv(csv_file_path)
+           logging.info(f"Reading CSV file: [{master_csv_file}]")
+           thyroid_data_frame = pd.read_csv(master_csv_file)
 
         # Data Cleaning and Preprocessing
            thyroid_data_frame.loc[thyroid_data_frame['age'] > 150, 'age'] = np.nan
@@ -106,14 +139,6 @@ class DataIngestion:
            thyroid_data_frame.drop(columns=[
             "TBG", "TSH measured", "T3 measured", "TT4 measured", "T4U measured", "FTI measured", "TBG measured", "referral source"
               ], inplace=True)
-        
-        # Convert 'Class' Column into Readable Labels
-           label_mapping = {
-            'negative': 'negative',
-            'increased binding protein': 'hyperthyroidism',
-            'decreased binding protein': 'hypothyroidism'
-            }
-           thyroid_data_frame["Class"] = thyroid_data_frame["Class"].replace(label_mapping)
 
            logging.info(f"Splitting data into train and test")
            strat_train_set = None
@@ -165,9 +190,10 @@ class DataIngestion:
     def initiate_data_ingestion(self) -> DataIngestionArtifact:
         try:
             zip_file_path = self.download_thyroid_data()
-            allbp_file_path = self.extract_zip_file(zip_file_path)
-            csv_file_path = self.convert_data_to_csv(allbp_file_path)
-            return self.split_data_as_train_test(csv_file_path)
+            extracted_files = self.extract_zip_file(zip_file_path)
+            csv_file_paths = self.convert_data_to_csv(extracted_files)
+            merged_csv_path = self.merge_csv_files(csv_file_paths)
+            return self.split_data_as_train_test(merged_csv_path)
         except Exception as e:
             raise AppException(e, sys) from e
 
